@@ -4,7 +4,7 @@
 >
 > **Ключевой принцип:** агент подбирает не «место, похожее по картинке», а **набор ощущений и условий**, которые создают это впечатление: свет, масштаб, тишину, ритм, активность, еду, людей вокруг и сезон.
 >
-> **Формат MVP:** **skill + MCP-сервер** на SQLite, с локальными файлами и запуском через `docker compose up`. Пользователь работает в своём AI-агенте (Claude, ChatGPT, Cursor, OpenCode).
+> **Формат MVP:** **skill + MCP-сервер** на SQLite с локальными файлами. Пользователь работает в своём AI-агенте (Claude, Cursor, OpenCode, Codex).
 
 ## 1. Резюме
 
@@ -38,9 +38,8 @@
 - **Skill + MCP-сервер.** Host-агент отвечает за vision, диалог и финальный текст; MCP-сервер — за данные, подбор, маршрут и валидацию.
 - **SQLite.** Единственная база данных: направления, точки, источники, кэш и метаданные файлов.
 - **Локальные файлы.** Экспорт и опциональные загрузки лежат в `data/files/` рядом с приложением.
-- **Docker Compose.** Один сервис, запуск одной командой `docker compose up`.
 - **Текстовый интерфейс.** Ответ приходит в чат host-агента; в MVP — текст и Markdown, экспорт в `.ics` и GeoJSON.
-- **MCP App, PDF, OAuth и веб-приложение** — в next steps.
+- **MCP App, PDF и веб-приложение** — в next steps.
 
 ---
 
@@ -233,16 +232,7 @@ MCP App, интерактивные карты и PDF **не входят в MVP
 
 ### Формат поставки
 
-Основной формат — **MCP + skill**. Skill задаёт workflow и правила, MCP-сервер даёт данные и расчёты. CLI остаётся dev-инструментом, HTTP/OpenAPI понадобится для будущего веб-приложения.
-
-### Транспорты
-
-Один и тот же сервер поддерживает два режима:
-
-- **stdio** — host запускает процесс локально. Подходит для Claude Desktop, Cursor, OpenCode, Codex. Приватно, не нужен хостинг.
-- **Streamable HTTP** — сервер работает по URL. Подходит для ChatGPT, Claude web, нескольких пользователей. Нужен HTTPS и лимиты.
-
-Docker Compose в MVP поднимает HTTP-версию. Для локального stdio можно использовать `uvx image2travel-mcp` или `docker compose run --rm -T image2travel ...`.
+Основной формат — **MCP + skill**. Skill задаёт workflow и правила, MCP-сервер даёт данные и расчёты. CLI остаётся dev-инструментом.
 
 ---
 
@@ -321,7 +311,7 @@ Prompts поддерживаются не всеми host. Поэтому осн
 
 В MVP сервер не хранит пользовательские поездки. Host передаёт `TripBrief` и выбранный `destination_id` при каждом вызове. Это даёт:
 
-- простой рестарт контейнера;
+- простой рестарт сервера;
 - отсутствие миграций пользовательских данных;
 - лёгкое тестирование;
 - приватность.
@@ -398,7 +388,7 @@ skill/
 
 - В репозитории: `.agents/skills/image2travel/SKILL.md`.
 - В пакете: `skill/SKILL.md`, чтобы можно было установить одной командой.
-- Skill устанавливается в host отдельно; контейнер содержит его копию для версии и документации, но не «пробрасывает» его агенту автоматически.
+- Skill устанавливается в host отдельно.
 - Версия skill и версия MCP-сервера должны быть совместимы; в `SKILL.md` указать `server_version`.
 - При изменении схемы `TripBrief` или имён tools обновлять skill и eval-набор.
 
@@ -535,7 +525,6 @@ data/
 - Проверять MIME, расширение и размер.
 - Для загрузок — TTL и периодическая очистка.
 - `data/` не отдаётся как статическая папка; доступ только через MCP resource или контролируемый endpoint.
-- В Docker `./data` монтируется в `/app/data`.
 
 ### Кэш
 
@@ -787,10 +776,11 @@ match =
 - Смета, ссылки, confidence.
 - Правки в диалоге: дешевле, тише, короче, больше природы.
 - Markdown/`.ics`/GeoJSON.
-- Обратная связь с бетой: ручной CSAT и интервью; автоматический сбор — next step.
-- Docker Compose: `docker compose up`.
 - Локальные файлы в `data/files/`.
-- Локальный stdio и удалённый HTTP.
+- Локальный stdio.
+- Обратная связь с бетой: ручной CSAT и интервью; автоматический сбор — next step.
+- Docker Compose: запуск одной командой для HTTP-режима (опционально).
+- Локальные файлы в `data/files/`.
 
 ### Не входит в MVP
 
@@ -817,9 +807,7 @@ match =
 | БД | SQLite + FTS5 | Один файл, без отдельного сервера |
 | Доступ к БД | `sqlite3` + тонкий repository-слой | Без ORM и миграционного фреймворка |
 | Файлы | `data/files/` | Локальный диск рядом с приложением |
-| HTTP | FastMCP Streamable HTTP | Один сервер для ChatGPT/Claude web |
-| Локальный запуск | stdio | Claude Desktop, Cursor, OpenCode |
-| Контейнер | Docker + Docker Compose | `docker compose up` |
+| Транспорт | stdio | Claude Desktop, Cursor, OpenCode, Codex |
 | Внешние API | OSM/OSRM, Open-Meteo, опционально Amadeus | Минимум зависимостей |
 | Тесты | pytest | Чистые функции и eval |
 | Логи | JSON в stdout | Без отдельной observability-платформы |
@@ -829,9 +817,6 @@ match =
 
 ```text
 image2travel/
-  compose.yaml
-  Dockerfile
-  .dockerignore
   .env.example
   pyproject.toml
   uv.lock
@@ -871,150 +856,27 @@ image2travel/
 .env
 ```
 
-В `.dockerignore`:
-
-```gitignore
-data/
-.git/
-.venv/
-```
-
 ---
 
-## 14. Docker Compose и запуск одной командой
+## 14. Запуск
 
-### Принцип
+### Локальный запуск (stdio)
 
-Один сервис. SQLite и файлы лежат в `./data` на хосте и монтируются в контейнер.
-
-### `compose.yaml`
-
-```yaml
-services:
-  image2travel:
-    build: .
-    ports:
-      - "8000:8000"
-    environment:
-      IMAGE2TRAVEL_DATA: /app/data
-      IMAGE2TRAVEL_HOST: 0.0.0.0
-      IMAGE2TRAVEL_PORT: 8000
-      IMAGE2TRAVEL_LOG_LEVEL: ${IMAGE2TRAVEL_LOG_LEVEL:-info}
-      OSRM_BASE_URL: ${OSRM_BASE_URL:-https://router.project-osrm.org}
-      OPEN_METEO_BASE_URL: ${OPEN_METEO_BASE_URL:-https://api.open-meteo.com}
-      AMADEUS_CLIENT_ID: ${AMADEUS_CLIENT_ID:-}
-      AMADEUS_CLIENT_SECRET: ${AMADEUS_CLIENT_SECRET:-}
-    volumes:
-      - ./data:/app/data
-    restart: unless-stopped
-    healthcheck:
-      test:
-        - CMD
-        - python
-        - -c
-        - "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"
-      interval: 30s
-      timeout: 5s
-      retries: 3
-```
-
-### `Dockerfile` (минимальный)
-
-```dockerfile
-FROM python:3.12-slim
-
-WORKDIR /app
-
-COPY pyproject.toml uv.lock ./
-COPY src ./src
-RUN pip install uv && uv sync --frozen --no-dev
-
-COPY skill ./skill
-
-RUN useradd --create-home --uid 1000 app && chown -R app:app /app
-USER app
-
-ENV IMAGE2TRAVEL_DATA=/app/data
-EXPOSE 8000
-
-CMD [".venv/bin/python", "-m", "image2travel", "--transport", "http", "--host", "0.0.0.0", "--port", "8000"]
-```
-
-### Запуск
-
-```bash
-docker compose up
-```
-
-Папка `data/` уже присутствует в репозитории через `.gitkeep`, поэтому Docker не создаст её от root. Если вы удалили `data/`, создайте её перед запуском: `mkdir -p data`.
-
-Первый запуск собирает образ, создаёт `data/image2travel.db`, применяет `schema.sql`, загружает seed-данные и поднимает MCP по адресу:
-
-```text
-http://localhost:8000/mcp
-```
-
-Повторный запуск:
-
-```bash
-docker compose up
-```
-
-После изменения кода:
-
-```bash
-docker compose up --build
-```
-
-Остановка:
-
-```bash
-docker compose down
-```
-
-`docker compose down` не удаляет `./data`, потому что это bind mount. Для полного сброса:
-
-```bash
-rm -rf data/
-mkdir -p data
-docker compose up
-```
-
-### Переменные окружения
-
-`.env.example`:
-
-```dotenv
-IMAGE2TRAVEL_DATA=/app/data
-IMAGE2TRAVEL_HOST=0.0.0.0
-IMAGE2TRAVEL_PORT=8000
-IMAGE2TRAVEL_LOG_LEVEL=info
-OSRM_BASE_URL=https://router.project-osrm.org
-OPEN_METEO_BASE_URL=https://api.open-meteo.com
-AMADEUS_CLIENT_ID=
-AMADEUS_CLIENT_SECRET=
-```
-
-Файл `.env` не обязателен: в `compose.yaml` уже есть значения по умолчанию. Копировать `.env.example` в `.env` нужно только для переопределения ключей и URL.
-
-### stdio-режим
-
-Для host, который запускает локальный процесс:
+Для host-агента, который запускает процесс локально:
 
 ```bash
 uvx image2travel-mcp
 ```
 
-Или через Docker:
+Или напрямую через `uv`:
 
 ```bash
-docker compose run --rm -T image2travel \
-  .venv/bin/python -m image2travel --transport stdio
+uv run python -m image2travel --transport stdio
 ```
 
 ### Подключение host-агента
 
-Локальный stdio (Claude Desktop, Cursor, OpenCode, Codex):
+Пример конфигурации для Claude Desktop, Cursor, OpenCode или Codex:
 
 ```json
 {
@@ -1027,46 +889,7 @@ docker compose run --rm -T image2travel \
 }
 ```
 
-Удалённый HTTP (ChatGPT, Claude web, Cursor, OpenCode):
-
-```json
-{
-  "mcpServers": {
-    "image2travel": {
-      "url": "http://localhost:8000/mcp"
-    }
-  }
-}
-```
-
-Для ChatGPT нужен публичный HTTPS, а не `localhost`. Для локальной проверки используйте tunnel или задеплойте на Fly.io/Render/VPS. OAuth и публичный домен — в next steps, если сервер станет многопользовательским.
-
-Точный формат конфигурации зависит от host: Claude Desktop использует `mcpServers`, OpenCode — `mcp`, Cursor — `mcpServers`. Сверяйтесь с документацией конкретного клиента.
-
-### Права на `./data`
-
-Контейнер работает не от root. Если на хосте возникают ошибки доступа:
-
-```bash
-mkdir -p data
-sudo chown -R 1000:1000 data
-```
-
-### SQLite в контейнере
-
-- Включить WAL: `PRAGMA journal_mode=WAL;`.
-- Один процесс-писатель; для MVP этого достаточно.
-- Не держать БД на сетевой файловой системе.
-- На macOS/Windows при проблемах с блокировками bind mount заменить на named volume, но тогда файлы будут не «рядом с приложением». Для Linux bind mount — основной вариант.
-
-### Healthcheck
-
-Добавить в приложение простой `/health`, который проверяет:
-
-- процесс жив;
-- SQLite открывается;
-- schema version совпадает;
-- `data/files` доступна на запись.
+Точный формат конфигурации зависит от конкретного клиента. Сервер работает только в режиме stdio и хранит данные в `./data/` (SQLite и файлы экспорта).
 
 ---
 
@@ -1336,6 +1159,6 @@ Image2Travel — это не «поиск по картинке», а **аген
 - **локальные файлы** в `data/files/`;
 - **Docker Compose**, который запускается одной командой;
 - **текстовый интерфейс** host-агента;
-- **MCP App, PDF, OAuth и веб-приложение** — в next steps.
+- **MCP App, PDF и веб-приложение** — в next steps.
 
 MVP должен доказать одну вещь: пользователь видит фото, получает план и думает: «Да, именно этого я и хотел. И я могу это сделать».
